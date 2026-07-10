@@ -14,7 +14,7 @@ import argparse
 import os
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 
 # ── Service imports ────────────────────────────────────────────────────────────
 from tradingview_mcp.core.services.coinlist import load_symbols
@@ -59,6 +59,7 @@ from tradingview_mcp.core.services.backtest_service import (
     compare_strategies as _compare_strategies,
     walk_forward_backtest,
 )
+from tradingview_mcp.core.services.chart_service import render_price_chart
 from tradingview_mcp.core.utils.validators import (
     sanitize_timeframe,
     sanitize_exchange,
@@ -810,6 +811,61 @@ def stock_options_unusual_activity(
           strike_vs_spot_pct (moneyness)}
     """
     return get_unusual_options_activity(symbol, top_n, min_volume, expiries)
+
+
+# ── Chart rendering ────────────────────────────────────────────────────────────
+
+_CHART_VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"}
+_CHART_VALID_INTERVALS = {"5m", "15m", "1h", "1d"}
+
+
+@mcp.tool()
+def render_chart(
+    symbol: str,
+    period: str = "6mo",
+    interval: str = "1d",
+    chart_type: str = "candlestick",
+    theme: str = "dark",
+    indicators: Optional[list[str]] = None,
+    show_volume: bool = True,
+) -> Image:
+    """Render an actual chart image for a symbol — candlesticks, overlays, volume, RSI.
+
+    Use this whenever the user wants to *see* a chart rather than read numbers —
+    "show me the chart for X", "what would a Bollinger squeeze look like on Y",
+    "make my chart look better", styling/appearance questions, etc.
+
+    Args:
+        symbol: Yahoo Finance symbol (AAPL, BTC-USD, THYAO.IS, ^GSPC, SPY)
+        period: History window — one of 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y
+        interval: Candle size — one of 5m, 15m, 1h, 1d
+                  (intraday intervals like 5m/15m only return data for short
+                  periods — Yahoo limits 5m history to ~60 days)
+        chart_type: "candlestick", "line", or "area"
+        theme: "dark" (TradingView-style dark) or "light"
+        indicators: Overlay list from: sma20, sma50, sma200, ema20, ema50,
+                    bollinger, rsi (rsi renders as its own sub-panel).
+                    Defaults to ["sma20", "sma50"] if omitted.
+        show_volume: Whether to render the volume sub-panel (default True)
+
+    Returns:
+        A PNG chart image.
+    """
+    period = period.strip().lower()
+    interval = interval.strip().lower()
+    if period not in _CHART_VALID_PERIODS:
+        raise ValueError(f"Invalid period '{period}'. Choose one of: {', '.join(sorted(_CHART_VALID_PERIODS))}")
+    if interval not in _CHART_VALID_INTERVALS:
+        raise ValueError(f"Invalid interval '{interval}'. Choose one of: {', '.join(sorted(_CHART_VALID_INTERVALS))}")
+    return render_price_chart(
+        normalize_yahoo_symbol(symbol),
+        period=period,
+        interval=interval,
+        chart_type=chart_type,
+        theme=theme,
+        indicators=indicators,
+        show_volume=show_volume,
+    )
 
 
 # ── Resource ───────────────────────────────────────────────────────────────────
